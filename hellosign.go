@@ -2,7 +2,6 @@ package hellosign
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -23,23 +22,25 @@ type Client struct {
 }
 
 type EmbeddedRequest struct {
-	TestMode              bool                  `form_field:"test_mode"`
-	ClientId              string                `form_field:"client_id"`
-	FileURL               []string              `form_field:"file_url"`
-	File                  []*os.File            `form_field:"file"`
-	Title                 string                `form_field:"title"`
-	Subject               string                `form_field:"subject"`
-	Message               string                `form_field:"message"`
-	SigningRedirectURL    string                `form_field:"signing_redirect_url"`
-	Signers               []Signer              `form_field:"signers"`
-	CCEmailAddresses      []string              `form_field:"cc_email_addresses"`
-	UseTextTags           bool                  `form_field:"use_text_tags"`
-	HideTextTags          bool                  `form_field:"hide_text_tags"`
-	Metadata              map[string]string     `form_field:"metadata"`
-	FormFieldsPerDocument [][]DocumentFormField `form_field:"form_fields_per_document"`
+	TestMode           bool       `form_field:"test_mode"`
+	ClientId           string     `form_field:"client_id"`
+	FileURL            []string   `form_field:"file_url"`
+	File               []*os.File `form_field:"file"`
+	TemplateID         string     `form_field:"template_id"`
+	Title              string     `form_field:"title"`
+	Subject            string     `form_field:"subject"`
+	Message            string     `form_field:"message"`
+	SigningRedirectURL string     `form_field:"signing_redirect_url"`
+	Signers            []Signer   `form_field:"signers"`
+	CCEmailAddresses   []string   `form_field:"cc_email_addresses"`
+	// UseTextTags           bool                  `form_field:"use_text_tags"`
+	// HideTextTags          bool                  `form_field:"hide_text_tags"`
+	Metadata map[string]string `form_field:"metadata"`
+	// FormFieldsPerDocument [][]DocumentFormField `form_field:"form_fields_per_document"`
 }
 
 type Signer struct {
+	Role  string
 	Name  string `field:"name"`
 	Email string `field:"email"`
 	Order int    `field:"order"`
@@ -100,20 +101,24 @@ func (m *Client) marshalMultipartRequest(
 			switch fieldTag {
 			case "signers":
 				for i, signer := range embRequest.Signers {
-					email, err := w.CreateFormField(fmt.Sprintf("signers[%v][email_address]", i))
+					role := signer.Role
+					if role == "" {
+						role = strconv.Itoa(i)
+					}
+					email, err := w.CreateFormField(fmt.Sprintf("signers[%v][email_address]", role))
 					if err != nil {
 						return nil, nil, err
 					}
 					email.Write([]byte(signer.Email))
 
-					name, err := w.CreateFormField(fmt.Sprintf("signers[%v][name]", i))
+					name, err := w.CreateFormField(fmt.Sprintf("signers[%v][name]", role))
 					if err != nil {
 						return nil, nil, err
 					}
 					name.Write([]byte(signer.Name))
 
 					if signer.Order != 0 {
-						order, err := w.CreateFormField(fmt.Sprintf("signers[%v][order]", i))
+						order, err := w.CreateFormField(fmt.Sprintf("signers[%v][order]", role))
 						if err != nil {
 							return nil, nil, err
 						}
@@ -121,7 +126,7 @@ func (m *Client) marshalMultipartRequest(
 					}
 
 					if signer.Pin != "" {
-						pin, err := w.CreateFormField(fmt.Sprintf("signers[%v][pin]", i))
+						pin, err := w.CreateFormField(fmt.Sprintf("signers[%v][pin]", role))
 						if err != nil {
 							return nil, nil, err
 						}
@@ -136,16 +141,16 @@ func (m *Client) marshalMultipartRequest(
 					}
 					formField.Write([]byte(v))
 				}
-			case "form_fields_per_document":
-				formField, err := w.CreateFormField(fieldTag)
-				if err != nil {
-					return nil, nil, err
-				}
-				ffpdJSON, err := json.Marshal(embRequest.FormFieldsPerDocument)
-				if err != nil {
-					return nil, nil, err
-				}
-				formField.Write([]byte(ffpdJSON))
+			// case "form_fields_per_document":
+			// 	formField, err := w.CreateFormField(fieldTag)
+			// 	if err != nil {
+			// 		return nil, nil, err
+			// 	}
+			// 	// ffpdJSON, err := json.Marshal(embRequest.FormFieldsPerDocument)
+			// 	if err != nil {
+			// 		return nil, nil, err
+			// 	}
+			// 	formField.Write([]byte(ffpdJSON))
 			case "file":
 				for i, file := range embRequest.File {
 					formField, err := w.CreateFormFile(fmt.Sprintf("file[%v]", i), file.Name())
@@ -190,9 +195,8 @@ func (m *Client) sendEmbeddedSignatureRequest(
 	request, _ := http.NewRequest("POST", endpoint, params)
 	request.Header.Add("Content-Type", w.FormDataContentType())
 	request.SetBasicAuth(m.APIKey, "")
-
 	response, err := m.getHTTPClient().Do(request)
-	defer response.Body.Close()
+	// defer response.Body.Close()
 	return response, err
 }
 
@@ -201,7 +205,7 @@ func (m *Client) getEndpoint() string {
 	if m.BaseURL != "" {
 		url = m.BaseURL
 	} else {
-		url = baseURL + "signature_request/create_embedded"
+		url = baseURL + "signature_request/create_embedded_with_template"
 	}
 	return url
 }
